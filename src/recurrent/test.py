@@ -16,6 +16,9 @@ class ExpectedFailure(object):
         self.correct_value = v
 
 
+DTSTART_PRE = "DTSTART:"
+
+
 # Expressions consist of the string to feed to parse, the expected result dict, and optionally the expected format result (default = string)
 expressions = [
     # recurring events
@@ -488,13 +491,13 @@ expressions = [
     # with start and end dates
     (
         "daily starting march 3rd",
-        dict(dtstart="%d0303" % NOW.year, freq="daily", interval=1),
+        dict(dtstart=DTSTART_PRE + "%d0303" % NOW.year, freq="daily", interval=1),
         "daily starting Wed Mar 3, 2010",
     ),
     (
         "starting in april, daily until march",
         dict(
-            dtstart="%d0401" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0401" % NOW.year,
             freq="daily",
             interval=1,
             until="%d0301" % (NOW.year + 1),
@@ -504,7 +507,7 @@ expressions = [
     (
         "daily starting in april until march",
         dict(
-            dtstart="%d0401" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0401" % NOW.year,
             freq="daily",
             interval=1,
             until="%d0301" % (NOW.year + 1),
@@ -514,7 +517,7 @@ expressions = [
     (
         "daily starting march 3rd except on march 6th and march 8th",
         dict(
-            dtstart="%d0303" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0303" % NOW.year,
             freq="daily",
             interval=1,
             exdate=[datetime.date(NOW.year, 3, 6), datetime.date(NOW.year, 3, 8)],
@@ -523,13 +526,18 @@ expressions = [
     ),
     (
         "starting tomorrow on weekends",
-        dict(dtstart="%d0102" % NOW.year, freq="weekly", interval=1, byday="SA,SU"),
+        dict(
+            dtstart=DTSTART_PRE + "%d0102" % NOW.year,
+            freq="weekly",
+            interval=1,
+            byday="SA,SU",
+        ),
         "weekends",
     ),
     (
         "daily starting march 3rd until april 5th",
         dict(
-            dtstart="%d0303" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0303" % NOW.year,
             until="%d0405" % NOW.year,
             freq="daily",
             interval=1,
@@ -538,7 +546,9 @@ expressions = [
     ),
     (
         "daily starting march 3rd for 8 times",
-        dict(dtstart="%d0303" % NOW.year, count=8, freq="daily", interval=1),
+        dict(
+            dtstart=DTSTART_PRE + "%d0303" % NOW.year, count=8, freq="daily", interval=1
+        ),
         "daily starting Wed Mar 3, 2010 for 8 times",
     ),
     (
@@ -560,7 +570,7 @@ expressions = [
     (
         "every wed from november until june except in march and may",
         dict(
-            dtstart="%d1101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d1101" % NOW.year,
             until="%d0601" % (NOW.year + 1),
             freq="weekly",
             interval=1,
@@ -572,7 +582,7 @@ expressions = [
     (
         "every wed from november until june except in december and may",
         dict(
-            dtstart="%d1101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d1101" % NOW.year,
             until="%d0601" % (NOW.year + 1),
             freq="weekly",
             interval=1,
@@ -584,7 +594,7 @@ expressions = [
     (
         "every wed from november until june except in december and mar and may",
         dict(
-            dtstart="%d1101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d1101" % NOW.year,
             until="%d0601" % (NOW.year + 1),
             freq="weekly",
             interval=1,
@@ -597,7 +607,7 @@ expressions = [
         "every wed from november until june except in march %d and may %d"
         % (NOW.year + 1, NOW.year + 1),
         dict(
-            dtstart="%d1101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d1101" % NOW.year,
             until="%d0601" % (NOW.year + 1),
             freq="weekly",
             interval=1,
@@ -609,7 +619,8 @@ expressions = [
     (
         "every 4th of the month starting next tuesday",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -621,7 +632,8 @@ expressions = [
     (
         "4th of each month starting next tuesday",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -633,7 +645,8 @@ expressions = [
     (
         "starting next tuesday on the 4th of each month",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -645,7 +658,8 @@ expressions = [
     (
         "every 4th of the month starting next tuesday for 3 occurrences",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -658,7 +672,8 @@ expressions = [
     (
         "starting next tuesday the 4th of each month for 3 occurrences",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -671,7 +686,8 @@ expressions = [
     (
         "4th of each month starting next tuesday for 3 occurrences",
         dict(
-            dtstart=(NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
+            dtstart=DTSTART_PRE
+            + (NOW + datetime.timedelta(days=(1 - NOW.weekday()) % 7)).strftime(
                 "%Y%m%d"
             ),
             freq="monthly",
@@ -684,7 +700,7 @@ expressions = [
     (
         "mondays and thursdays from jan 1 to march 25th",
         dict(
-            dtstart="%d0101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0101" % NOW.year,
             until="%d0325" % NOW.year,
             freq="weekly",
             interval=1,
@@ -695,7 +711,7 @@ expressions = [
     (
         "mondays and thursdays starting jan 1 for 6 times",
         dict(
-            dtstart="%d0101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d0101" % NOW.year,
             count=6,
             freq="weekly",
             interval=1,
@@ -947,7 +963,7 @@ expressions = [
     (
         "every fourth of the month from jan 1 2010 to dec 25th 2020",
         dict(
-            dtstart="20100101",
+            dtstart=DTSTART_PRE + "20100101",
             interval=1,
             freq="monthly",
             bymonthday="4",
@@ -1029,7 +1045,7 @@ expressions = [
         dict(
             freq="weekly",
             interval=3,
-            dtstart="%d1101" % NOW.year,
+            dtstart=DTSTART_PRE + "%d1101" % NOW.year,
             byday="FR",
             until="%d0201" % (NOW.year + 1),
         ),
@@ -1038,7 +1054,11 @@ expressions = [
     (
         "fridays starting in may for 10 occurrences",
         dict(
-            freq="weekly", interval=1, dtstart="%d0501" % NOW.year, byday="FR", count=10
+            freq="weekly",
+            interval=1,
+            dtstart=DTSTART_PRE + "%d0501" % NOW.year,
+            byday="FR",
+            count=10,
         ),
         "every Fri starting Sat May 1, 2010 for 10 times",
     ),
@@ -1449,9 +1469,8 @@ def tst_expression(string, expected, de):
         if de is not None:
             self.assertEqual(de, back_again)
             if back_again is not None and back_again != string:
-                self.assertEqual(
-                    back_again, date.format(date.parse(back_again))
-                )  # Run it thru again!
+                # Run it thru again!
+                self.assertEqual(back_again, date.format(date.parse(back_again)))
 
     return test_
 
