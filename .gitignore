@@ -6,3 +6,5 @@ build
 .pytest_cache
 htmlcov
 *.swp
+
+*.egg-info
