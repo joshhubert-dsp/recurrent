@@ -11,6 +11,8 @@ try:
 except ImportError:  # pragma nocover
     import parsedatetime
 
+from dateutil.rrule import rrulestr
+
 from recurrent.constants import *
 
 DEBUG = False
@@ -26,9 +28,8 @@ else:
 RE_TIME = re.compile(
     r"(?P<hour>\d{1,2}):?(?P<minute>\d{2})?\s?(?P<mod>am?|pm?)?(o\'?clock)?"
 )
-RE_DEF_TIME = re.compile(
-    r"[:apo]"
-)  # Issue #13: Time with a ':', 'am', 'pm', or 'oclock'
+# Issue #13: Time with a ':', 'am', 'pm', or 'oclock'
+RE_DEF_TIME = re.compile(r"[:apo]")
 RE_AT_TIME = re.compile(r"at\s%s" % RE_TIME.pattern)
 RE_AT_TIME_END = re.compile(r"at\s%s$" % RE_TIME.pattern)
 RE_STARTING = re.compile(r"start(?:s|ing)?")
@@ -81,12 +82,12 @@ RE_THRU = re.compile(
     r"(?P<first>%s|%s)(?:[-]|\s+thru\s+|\s+through\s+)(?P<second>%s|%s)"
     % (RE_PLURAL_DOW.pattern, RE_DOW.pattern, RE_PLURAL_DOW.pattern, RE_DOW.pattern)
 )
-RE_BEGIN_END_OF = re.compile(
-    r"(?P<be>beginning|begin|start|ending|end)\s+of\b"
-)  # Issue #12
+# Issue #12
+RE_BEGIN_END_OF = re.compile(r"(?P<be>beginning|begin|start|ending|end)\s+of\b")
+# Issue #12
 RE_AT_BEGIN_END = re.compile(
     r"\bat(\s+the)?\s+(?P<be>beginning\b|begin\b|start\b|ending\b|end\b)"
-)  # Issue #12
+)
 RE_RRULE = re.compile(r"^RRULE:(?P<rr>.*)$", re.M)
 RE_BYSETPOS = re.compile(r"\binstance\b|\boccurrence\b")
 
@@ -94,9 +95,8 @@ RE_BYSETPOS = re.compile(r"\binstance\b|\boccurrence\b")
 def normalize(s):
     s = s.strip().lower()
     s = re.sub(r",\s*(\d\d\d\d)", r" \1", s)  # Remove commas in dates before the year
-    s = re.sub(
-        RE_LONG_DATE_START, r"\1 \2", s
-    )  # Remove commas in long format dates, e.g. "Tuesday, January..."
+    # Remove commas in long format dates, e.g. "Tuesday, January..."
+    s = re.sub(RE_LONG_DATE_START, r"\1 \2", s)
     s = re.sub(r",\s*and", " and", s)  # Remove commas before 'and'
     s = re.sub(r",", " and ", s)  # Change all other commas to ' and '
     s = re.sub(r"[^\w\s\./:-]", "", s)  # Allow . for international formatting
@@ -178,11 +178,25 @@ class Tokenizer(list):
 
 
 class RecurringEvent(object):
+    """
+    Args:
+        now_date (datetime.datetime | datetime.date | None, optional): Baseline
+            reference date or datetime object used for properly parsing phrases such as
+            "tomorrow", "for 3 weeks", etc. If it has `tzinfo` attached, that timezone is
+            used for all downstream datetimes produced. Separate from the RRULE standard DTSTART
+            datetime, which is determined from the natural language string passed to parse().
+            Defaults to None, in which case datetime.now() is used.
+        preferred_time_range (tuple[int, int], optional): Tuple of preferred start
+            and end hours in 24-hour format. Defaults to (8, 19).
+        parse_constants (parsedatetime.Constants, optional): Constants passed
+            directly to parsedatetime.Calendar(). Defaults to None.
+    """
+
     def __init__(
         self,
-        now_date=None,
-        preferred_time_range=(8, 19),
-        parse_constants: parsedatetime.Constants = None,
+        now_date: datetime.datetime | datetime.date | None = None,
+        preferred_time_range: tuple[int, int] = (8, 19),
+        parse_constants: parsedatetime.Constants | None = None,
     ):
         if now_date is None:
             now_date = datetime.datetime.now()
@@ -191,6 +205,9 @@ class RecurringEvent(object):
         ):
             now_date = datetime.datetime(now_date.year, now_date.month, now_date.day)
         self.now_date = now_date
+        # if tzinfo is available, use it for everything
+        self.timezone = self.now_date.tzinfo
+
         self.preferred_time_range = preferred_time_range
         self.pdt = parsedatetime.Calendar(constants=parse_constants)
         self._reset()
@@ -201,7 +218,7 @@ class RecurringEvent(object):
             preferred_time_range = (0, 12)
 
     def _reset(self):
-        # rrule params
+        """reset all rrule params"""
         self.dtstart = None
         self.until = None
         self.count = None
@@ -220,7 +237,8 @@ class RecurringEvent(object):
         self.bysetpos = []
         self.byweekno = []
 
-    def get_params(self):
+    def get_params(self) -> dict:
+        """return a dict of all set rrule params"""
         params = {}
         # we shouldnt have weekdays and ordinal weekdays but if we do ordinal weekdays
         # take precedence.
@@ -248,9 +266,27 @@ class RecurringEvent(object):
         if self.freq is not None:
             params["freq"] = self.freq
         if self.dtstart:
-            params["dtstart"] = self.dtstart.strftime("%Y%m%d")
+            # timezone-aware triggers switch to full time string with TZID
+            if self.timezone is not None:
+                # TODO enforce IANA timezone names
+                # ex: DTSTART;TZID=America/Los_Angeles:YYYYMMDDTHHMMSS
+                params["dtstart"] = (
+                    "DTSTART;TZID="
+                    + str(self.timezone)
+                    + ":"
+                    + self.dtstart.strftime("%Y%m%dT%H%M%S")
+                )
+            else:
+                params["dtstart"] = "DTSTART:" + self.dtstart.strftime("%Y%m%d")
         if self.until:
-            params["until"] = self.until.strftime("%Y%m%d")
+            # RFC 5545 mandates that if dstart is timezone-aware, until must have UTC-zone
+            # specifically
+            if self.timezone is not None:
+                params["until"] = self.until.astimezone(datetime.timezone.utc).strftime(
+                    "%Y%m%dT%H%M%SZ"
+                )
+            else:
+                params["until"] = self.until.strftime("%Y%m%d")
         elif self.count:
             params["count"] = self.count
         if self.exrule:
@@ -265,10 +301,10 @@ class RecurringEvent(object):
         if "freq" not in params:
             return None  # Not a valid RRULE
         if "dtstart" in params:
-            rrule += "DTSTART:%s\n" % params.pop("dtstart")
+            rrule += params.pop("dtstart")
         exdate = params.pop("exdate", None)
         exrule = params.pop("exrule", None)
-        rrule += "RRULE:"
+        rrule += "\nRRULE:"
         rules = []
         for k, v in list(params.items()):
             if isinstance(v, str) or isinstance(v, int):
@@ -495,23 +531,30 @@ class RecurringEvent(object):
         return result
 
     def adjust_exdates(self, rrules, exdate):
-        """Adjust a list of exdates to ensure they specify the times and then properly format them for the EXDATE rule, so
-        things like "daily at 2pm except for tomorrow" will work properly"""
+        """Adjust a list of exdates to ensure they specify the times and then properly
+        format them for the EXDATE rule, so things like "daily at 2pm except for
+        tomorrow" will work properly"""
 
         def date_key(ex):
             if isinstance(ex, datetime.datetime):
                 return ex
             elif isinstance(ex, list):
                 if ex[1] is not None:
-                    return datetime.datetime(ex[1], ex[0], 1)
+                    return datetime.datetime(ex[1], ex[0], 1, tzinfo=self.timezone)
                 elif (self.dtstart and ex[0] < self.dtstart.month) or ex[
                     0
                 ] < self.now_date.month:
-                    return datetime.datetime(self.now_date.year + 1, ex[0], 1)
+                    return datetime.datetime(
+                        self.now_date.year + 1, ex[0], 1, tzinfo=self.timezone
+                    )
                 else:
-                    return datetime.datetime(self.now_date.year, ex[0], 1)
+                    return datetime.datetime(
+                        self.now_date.year, ex[0], 1, tzinfo=self.timezone
+                    )
             else:  # date
-                return datetime.datetime(ex.year, ex.month, ex.day)
+                return datetime.datetime(
+                    ex.year, ex.month, ex.day, tzinfo=self.timezone
+                )
 
         exdate.sort(key=date_key)
         needs_time = False
@@ -522,8 +565,6 @@ class RecurringEvent(object):
         if needs_time:
             new_exdate = []
             try:
-                from dateutil.rrule import rrulestr
-
                 rs = rrulestr(rrules, dtstart=self.now_date)
                 ndx = 0
                 for r in rs:
@@ -577,7 +618,7 @@ class RecurringEvent(object):
         timestruct, result = self.pdt.parse(date_string, self.now_date)
         if result:
             log.debug("parsed date string '%s' to %s" % (date_string, timestruct[:6]))
-            return datetime.datetime(*timestruct[:6])
+            return datetime.datetime(*timestruct[:6], tzinfo=self.timezone)
         return None
 
     def eat_times(self, tokens):  # Issue #13
@@ -937,7 +978,7 @@ class RecurringEvent(object):
             if tokens[-1].type_ == "number":  # year, or it could be the time
                 yr = get_number(tokens[-1].text)
                 if yr >= 1000:
-                    now_date = datetime.datetime(yr, 1, 1)
+                    now_date = datetime.datetime(yr, 1, 1, tzinfo=self.timezone)
                 del tokens[-1]
             if tokens[-1].type_ == "MoY":  # First Mon in Aug
                 if (tokens[-2].type_ != "ordinal" and tokens[-2].type_ != "DoW") or len(
@@ -972,7 +1013,6 @@ class RecurringEvent(object):
             rfc = r.parse(f"every {s}")
             if not rfc:
                 return None  # pragma nocover
-            from dateutil.rrule import rrulestr
 
             rr = rrulestr(rfc, dtstart=now_date)
             return rr[0]
@@ -1233,8 +1273,6 @@ class RecurringEvent(object):
                 def starting_needed():
                     """Make sure we really need this 'starting' by seeing what happens if we remove it"""
                     try:
-                        from dateutil.rrule import rrulestr
-
                         r1 = rrulestr(rrule_or_datetime, dtstart=self.now_date)
                         r2 = rrulestr(
                             re.sub(r"^DTSTART.*?\n", "", rrule_or_datetime, re.M),
@@ -1276,8 +1314,6 @@ class RecurringEvent(object):
                     months.add((e.year, e.month))
                     max_year = max(max_year, e.year)
                 try:
-                    from dateutil.rrule import rrulestr
-
                     rr = rrulestr(rrule_or_datetime, dtstart=self.now_date)
                     for r in rr:
                         if r.year > max_year:

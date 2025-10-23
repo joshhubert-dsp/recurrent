@@ -20,8 +20,6 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     zip_safe=False,
-    install_requires=[
-        "parsedatetime",
-    ],
-    python_requires=">3.6.0",
+    install_requires=["parsedatetime", "python-dateutil"],
+    python_requires=">3.10.0",
 )
