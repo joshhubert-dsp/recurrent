@@ -190,6 +190,9 @@ class RecurringEvent(object):
             and end hours in 24-hour format. Defaults to (8, 19).
         parse_constants (parsedatetime.Constants, optional): Constants passed
             directly to parsedatetime.Calendar(). Defaults to None.
+        until_inclusive (bool, optinonal): If True, a parsed date for 'UNTIL=' segment
+            will be interpreted as inclusive (the RFC-5545 standard), if False, as
+            exclusive. Defaults to True.
     """
 
     def __init__(
@@ -197,6 +200,7 @@ class RecurringEvent(object):
         now_date: datetime.datetime | datetime.date | None = None,
         preferred_time_range: tuple[int, int] = (8, 19),
         parse_constants: parsedatetime.Constants | None = None,
+        until_inclusive: bool = True,
     ):
         if now_date is None:
             now_date = datetime.datetime.now()
@@ -210,6 +214,7 @@ class RecurringEvent(object):
 
         self.preferred_time_range = preferred_time_range
         self.pdt = parsedatetime.Calendar(constants=parse_constants)
+        self.until_inclusive = until_inclusive
         self._reset()
 
         if parse_constants and parse_constants.use24:
@@ -301,10 +306,10 @@ class RecurringEvent(object):
         if "freq" not in params:
             return None  # Not a valid RRULE
         if "dtstart" in params:
-            rrule += params.pop("dtstart")
+            rrule += params.pop("dtstart") + "\n"
         exdate = params.pop("exdate", None)
         exrule = params.pop("exrule", None)
-        rrule += "\nRRULE:"
+        rrule += "RRULE:"
         rules = []
         for k, v in list(params.items()):
             if isinstance(v, str) or isinstance(v, int):
@@ -366,12 +371,10 @@ class RecurringEvent(object):
     def parse_time(self, s, dt):
         m = RE_AT_TIME.search(s)
         if not m:  # Issue #13
-            m = RE_TIME.match(
-                s
-            )  # Issue #13: Ok not to have 'at' if the string starts with a definite time
-            if m and not RE_DEF_TIME.search(
-                m.group(0)
-            ):  # Issue #13: We have to be sure this is a time
+            # Issue #13: Ok not to have 'at' if the string starts with a definite time
+            m = RE_TIME.match(s)
+            # Issue #13: We have to be sure this is a time
+            if m and not RE_DEF_TIME.search(m.group(0)):
                 m = None  # Issue #13
         if m:
             hr = self.get_hour(m.group("hour"), m.group("mod"))
@@ -393,13 +396,13 @@ class RecurringEvent(object):
                 pass
         return dt, False
 
-    @staticmethod
-    def increment_date(d, amount, units="years"):
-        """Return a date that's `amount` years, months, weeks, or days after the date (or datetime)
-        object `d`. Return the same calendar date (month and day) in the
-        destination, if it exists, otherwise use the following day
-        (thus changing February 29 to March 1).
-
+    def increment_date(self, d, amount, units="years"):
+        """
+        Return a date that's `amount` years, months, weeks, or days after the date (or
+        datetime) object `d`. Return the same calendar date (month and day) in the
+        destination, if it exists, otherwise use the following day (thus changing
+        February 29 to March 1). If self.until_inclusive is False and `units` is "days"
+        or "weeks", decrements the final computed date by 1 day.
         """
         if units == "years":
             try:
@@ -425,7 +428,9 @@ class RecurringEvent(object):
             multiplier = 1
             if units == "weeks":
                 multiplier = 7
-            return d + datetime.timedelta(days=amount * multiplier)
+            return d + datetime.timedelta(
+                days=amount * multiplier - int(not self.until_inclusive)
+            )
 
     def parse_start_and_end(self, s):
         m = RE_EXCEPT.match(s)
@@ -986,16 +991,14 @@ class RecurringEvent(object):
                 ) > 4:
                     return None
                 s = " ".join(t.text for t in tokens)
-            elif (
-                tokens[-1].type_ == "unit" and tokens[-1].text != "day"
-            ):  # first of the year
+            # first of the year
+            elif tokens[-1].type_ == "unit" and tokens[-1].text != "day":
                 if len(tokens) > 4:
                     return None
                 units = tokens[-1].text
                 s = " ".join(t.text for t in tokens[:-1])
-                s += (
-                    " of the " + units
-                )  # We do this so "every first year" doesn't get changed to "every 1 years"
+                # We do this so "every first year" doesn't get changed to "every 1 years"
+                s += " of the " + units
             elif tokens[-1].text == "day":  # 40th day in 2010
                 if len(tokens) >= 3:
                     return None
@@ -1003,9 +1006,8 @@ class RecurringEvent(object):
             else:
                 return None
 
-            s = re.sub(
-                r"[-]([a-z0-9]+)", r"\1 last", s
-            )  # Issue #18: change "-2nd" back to "2nd last"
+            # Issue #18: change "-2nd" back to "2nd last"
+            s = re.sub(r"[-]([a-z0-9]+)", r"\1 last", s)
 
             r = RecurringEvent(
                 now_date=now_date, preferred_time_range=self.preferred_time_range
