@@ -79,6 +79,7 @@ RE_COUNT_UNTIL = re.compile(
     """,
     re.VERBOSE,
 )
+
 RE_START_END = re.compile(r"%s\s%s" % (RE_START, RE_END))
 RE_OTHER_END = re.compile(r"(?P<other>.*)\s%s" % RE_END)
 RE_SEP = re.compile(r"(from|to|through|thru|on|at|of|in|a|an|the|and|or|both)$")
@@ -197,11 +198,12 @@ class RecurringEvent(object):
     """
     Args:
         now_date (datetime.datetime | datetime.date | None, optional): Baseline
-            reference date or datetime object used for properly parsing phrases such as
-            "tomorrow", "for 3 weeks", etc. If it has `tzinfo` attached, that timezone is
-            used for all downstream datetimes produced. Separate from the RRULE standard DTSTART
-            datetime, which is determined from the natural language string passed to parse().
-            Defaults to None, in which case datetime.now() is used.
+            reference date or datetime object, used for properly parsing phrases such as
+            "tomorrow", "for 3 weeks", etc, if DTSTART is not supplied in the natural
+            language string passed to parse(). If DTSTART is supplied, it takes
+            precedence. If it has `tzinfo` attached, that timezone is used for all
+            downstream datetimes produced. Defaults to None, in which case
+            datetime.now() is used.
         preferred_time_range (tuple[int, int], optional): Tuple of preferred start
             and end hours in 24-hour format. Defaults to (8, 19).
         parse_constants (parsedatetime.Constants, optional): Constants passed
@@ -226,6 +228,7 @@ class RecurringEvent(object):
         ):
             now_date = datetime.datetime(now_date.year, now_date.month, now_date.day)
         self.now_date = now_date
+        # TODO should explicit tzinfo arg be used instead?
         # if tzinfo is available, use it for everything
         self.timezone = self.now_date.tzinfo
 
@@ -316,6 +319,11 @@ class RecurringEvent(object):
         if self.exdate:
             params["exdate"] = self.exdate
         return params
+
+    def baseline_dt(self) -> datetime.datetime:
+        """prefer self.dtstart as the baseline if available, fall back to self.now_date
+        if not"""
+        return self.dtstart or self.now_date
 
     def get_RFC_rrule(self):
         rrule = ""
@@ -449,6 +457,7 @@ class RecurringEvent(object):
                 days=amount * multiplier - int(not self.until_days_inclusive)
             )
 
+    # TODO parse "starting next week/tomorrow/next month"
     def parse_start_and_end(self, s):
         m = RE_EXCEPT.match(s)
         if m:
@@ -509,14 +518,16 @@ class RecurringEvent(object):
         if m:
             event = m.group("event")
             unit = m.group("unit")
-            self.until = self.increment_date(self.now_date, 1, unit + "s")
+            self.until = self.increment_date(self.baseline_dt(), 1, unit + "s")
             return event
         m = RE_COUNT_UNTIL.search(s)
         if m:
             event = m.group("event")
             count = m.group("count")
             unit = m.group("unit")
-            self.until = self.increment_date(self.now_date, get_number(count), unit)
+            self.until = self.increment_date(
+                self.baseline_dt(), get_number(count), unit
+            )
             return event
         return s
 
@@ -563,15 +574,13 @@ class RecurringEvent(object):
             elif isinstance(ex, list):
                 if ex[1] is not None:
                     return datetime.datetime(ex[1], ex[0], 1, tzinfo=self.timezone)
-                elif (self.dtstart and ex[0] < self.dtstart.month) or ex[
-                    0
-                ] < self.now_date.month:
+                elif ex[0] < self.baseline_dt().month:
                     return datetime.datetime(
-                        self.now_date.year + 1, ex[0], 1, tzinfo=self.timezone
+                        self.baseline_dt().year + 1, ex[0], 1, tzinfo=self.timezone
                     )
                 else:
                     return datetime.datetime(
-                        self.now_date.year, ex[0], 1, tzinfo=self.timezone
+                        self.baseline_dt().year, ex[0], 1, tzinfo=self.timezone
                     )
             else:  # date
                 return datetime.datetime(
@@ -587,7 +596,7 @@ class RecurringEvent(object):
         if needs_time:
             new_exdate = []
             try:
-                rs = rrulestr(rrules, dtstart=self.now_date)
+                rs = rrulestr(rrules, dtstart=self.baseline_dt())
                 ndx = 0
                 for r in rs:
                     while True:
@@ -637,7 +646,7 @@ class RecurringEvent(object):
         if result:
             log.debug(f"parsed date string '{date_string}' to {result}")
             return result
-        timestruct, result = self.pdt.parse(date_string, self.now_date)
+        timestruct, result = self.pdt.parse(date_string, self.baseline_dt())
         if result:
             log.debug("parsed date string '%s' to %s" % (date_string, timestruct[:6]))
             return datetime.datetime(*timestruct[:6], tzinfo=self.timezone)
@@ -660,20 +669,18 @@ class RecurringEvent(object):
         return tokens
 
     def fixup_ord_intervals(self, s):
-        def ord_sub(
-            m,
-        ):  # Replace every 2nd day => every 2 days; every 3rd month => every 3 months; every 4th year => every 4 years; every 5th fri => every 5 fridays
+        # Replace every 2nd day => every 2 days; every 3rd month => every 3 months;
+        # every 4th year => every 4 years; every 5th fri => every 5 fridays
+        def ord_sub(m):
             ordx = get_ordinal_index(m.group("ord"))
             unit = m.group("unit")
-            if unit == "day" and (
-                "week" in s or "month" in s or "year" in s
-            ):  # e.g. last day of each month; every year on the 31st day
+            if unit == "day" and ("week" in s or "month" in s or "year" in s):
+                # e.g. last day of each month; every year on the 31st day
                 return m.group(0)  # Don't change this kind!
             if unit == "day" or unit == "week" or unit == "month" or unit == "year":
                 unit += "s"
-            elif (
-                RE_MOY_NOT_ANCHORED.search(s) or "week" in s or "month" in s
-            ):  # e.g. fourth thu of march, third fri of each month
+            elif RE_MOY_NOT_ANCHORED.search(s) or "week" in s or "month" in s:
+                # e.g. fourth thu of march, third fri of each month
                 return m.group(0)  # Don't change this kind!
             else:
                 unit = " and ".join(
@@ -1333,7 +1340,7 @@ class RecurringEvent(object):
                     months.add((e.year, e.month))
                     max_year = max(max_year, e.year)
                 try:
-                    rr = rrulestr(rrule_or_datetime, dtstart=self.now_date)
+                    rr = rrulestr(rrule_or_datetime, dtstart=self.baseline_dt())
                     for r in rr:
                         if r.year > max_year:
                             break
@@ -1343,7 +1350,7 @@ class RecurringEvent(object):
                     months.sort()
                     return [
                         month_name(d[1])
-                        + ((" " + str(d[0])) if d[0] != self.now_date.year else "")
+                        + ((" " + str(d[0])) if d[0] != self.baseline_dt().year else "")
                         for d in months
                     ]
                 except Exception:  # pragma nocover
