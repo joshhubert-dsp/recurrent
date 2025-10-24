@@ -52,16 +52,32 @@ RE_EVENT_START = re.compile(r"%s\s%s" % (RE_EVENT, RE_START))
 RE_FROM_TO = re.compile(
     r"(?P<event>.*)from(?P<starting>.*)(to|through|thru|until)(?P<ending>.*)"
 )
+
+RE_FOR = r"(?:\bfor\s+(?:the\s+next\s+|up\s+to\s+)?)"
 RE_COUNT = re.compile(
-    r"(?P<event>.*?)(?:\bfor\s+|\b(?:for\s+)?up\s+to\s+)?(?:(?P<twice>twice)|(?P<count>%s)(?:x|\s*times|\s*occurrences))"
-    % RE_NUMBER_NOT_ANCHORED.pattern
+    rf"""
+    (?P<event>.*?)
+    {RE_FOR}?
+    (?:(?P<twice>twice)|(?P<count>{RE_NUMBER_NOT_ANCHORED.pattern})(?:x|\s*times|\s*occurrences))
+    """,
+    re.VERBOSE,
 )
 RE_COUNT_UNTIL1 = re.compile(
-    r"(?P<event>.*?)(?:\bfor\s+the\s+next\s+|\bfor\s+(?:up\s+to\s+)?)\s*(?P<unit>week|month|year)"
+    rf"""
+    (?P<event>.*?)
+    {RE_FOR}(?:one\s+|1\s+|a\s+)?
+    (?P<unit>week|month|year)
+    """,
+    re.VERBOSE,
 )
 RE_COUNT_UNTIL = re.compile(
-    r"(?P<event>.*?)(?:\bfor\s+the\s+next\s+|\bfor\s+(?:up\s+to\s+)?)(?P<count>%s)\s*(?P<unit>days|weeks|months|years)"
-    % RE_NUMBER_NOT_ANCHORED.pattern
+    rf"""
+    (?P<event>.*?)
+    {RE_FOR}
+    (?P<count>{RE_NUMBER_NOT_ANCHORED.pattern})\s*
+    (?P<unit>days|weeks|months|years)
+    """,
+    re.VERBOSE,
 )
 RE_START_END = re.compile(r"%s\s%s" % (RE_START, RE_END))
 RE_OTHER_END = re.compile(r"(?P<other>.*)\s%s" % RE_END)
