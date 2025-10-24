@@ -3,6 +3,7 @@ import datetime
 import logging
 import re
 import sys
+from zoneinfo import ZoneInfo
 
 # import traceback
 
@@ -307,7 +308,7 @@ class RecurringEvent(object):
             # RFC 5545 mandates that if dstart is timezone-aware, until must have UTC-zone
             # specifically
             if self.timezone is not None:
-                params["until"] = self.until.astimezone(datetime.timezone.utc).strftime(
+                params["until"] = self.until.astimezone(ZoneInfo("UTC")).strftime(
                     "%Y%m%dT%H%M%SZ"
                 )
             else:
