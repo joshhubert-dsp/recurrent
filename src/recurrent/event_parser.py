@@ -60,7 +60,7 @@ RE_COUNT_UNTIL1 = re.compile(
     r"(?P<event>.*?)(?:\bfor\s+the\s+next\s+|\bfor\s+(?:up\s+to\s+)?)\s*(?P<unit>week|month|year)"
 )
 RE_COUNT_UNTIL = re.compile(
-    r"(?P<event>.*?)(?:\bfor\s+the\s+next\s+|\bfor\s+(?:up\s+to\s+)?)(?P<count>%s)\s*(?P<unit>weeks|months|years)"
+    r"(?P<event>.*?)(?:\bfor\s+the\s+next\s+|\bfor\s+(?:up\s+to\s+)?)(?P<count>%s)\s*(?P<unit>days|weeks|months|years)"
     % RE_NUMBER_NOT_ANCHORED.pattern
 )
 RE_START_END = re.compile(r"%s\s%s" % (RE_START, RE_END))
@@ -190,9 +190,10 @@ class RecurringEvent(object):
             and end hours in 24-hour format. Defaults to (8, 19).
         parse_constants (parsedatetime.Constants, optional): Constants passed
             directly to parsedatetime.Calendar(). Defaults to None.
-        until_inclusive (bool, optinonal): If True, a parsed date for 'UNTIL=' segment
-            will be interpreted as inclusive (the RFC-5545 standard), if False, as
-            exclusive. Defaults to True.
+        until_days_inclusive (bool, optinonal): If True, when a recurrence duration
+            specifies days or weeks, a parsed date for 'UNTIL=' segment will be
+            interpreted as inclusive (the RFC-5545 standard), if False, as exclusive.
+            Defaults to True.
     """
 
     def __init__(
@@ -200,7 +201,7 @@ class RecurringEvent(object):
         now_date: datetime.datetime | datetime.date | None = None,
         preferred_time_range: tuple[int, int] = (8, 19),
         parse_constants: parsedatetime.Constants | None = None,
-        until_inclusive: bool = True,
+        until_days_inclusive: bool = True,
     ):
         if now_date is None:
             now_date = datetime.datetime.now()
@@ -214,7 +215,7 @@ class RecurringEvent(object):
 
         self.preferred_time_range = preferred_time_range
         self.pdt = parsedatetime.Calendar(constants=parse_constants)
-        self.until_inclusive = until_inclusive
+        self.until_days_inclusive = until_days_inclusive
         self._reset()
 
         if parse_constants and parse_constants.use24:
@@ -401,7 +402,7 @@ class RecurringEvent(object):
         Return a date that's `amount` years, months, weeks, or days after the date (or
         datetime) object `d`. Return the same calendar date (month and day) in the
         destination, if it exists, otherwise use the following day (thus changing
-        February 29 to March 1). If self.until_inclusive is False and `units` is "days"
+        February 29 to March 1). If self.until_days_inclusive is False and `units` is "days"
         or "weeks", decrements the final computed date by 1 day.
         """
         if units == "years":
@@ -429,7 +430,7 @@ class RecurringEvent(object):
             if units == "weeks":
                 multiplier = 7
             return d + datetime.timedelta(
-                days=amount * multiplier - int(not self.until_inclusive)
+                days=amount * multiplier - int(not self.until_days_inclusive)
             )
 
     def parse_start_and_end(self, s):
